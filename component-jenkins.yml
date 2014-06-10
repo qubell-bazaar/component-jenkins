@@ -4,6 +4,7 @@ application:
     input.image-user: "ubuntu"
     input.instance-size: "m1.small"
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
+    input.plugin-names: ["envinject", "ws-cleanup", "rebuild", "jobConfigHistory", "greenballs", "build-user-vars-plugin"]
 
   interfaces:
     input:
@@ -11,6 +12,7 @@ application:
       image-user: "bind(lb#input.image-user, jenkins#input.image-user)"
       instance-size: "bind(lb#input.instance-size)"
       recipe-url: "bind(jenkins#input.recipe-url)"
+      plugin-names: "bind(jenkins#input.plugin-names)"
     manage:
       plugins: "bind(jenkins#actions.install-plugins)"
     output:
@@ -41,20 +43,26 @@ application:
         input:
           image-user: configuration(string)
           recipe-url: configuration(string)
+          plugin-names: configuration(list<string>)
         lb-output:
           lb-stats: consume-signal(object)
         lb-manage:
           add-servers: send-command(list<string> app-hosts, string app-port, string lb-bucket => string entry-url)
         actions:
-          install-plugins: receive-command(list<string> plugins)
+          install-plugins: receive-command(list<string> plugin-names)
         result:
           jenkins-host: publish-signal(string)
           jenkins-url: publish-signal(string)
-          jenkins-admin-password: publish-signal(string)
+          jenkins-admin-password: publish-signal(list<string>)
 
       required: [lb-output,lb-manage]
 
       configuration:
+        configuration.triggers:
+          input.plugin-names: install-plugins
+
+        configuration.propagateStatus: [install-plugins]
+
         configuration.workflows:
           launch:
             parameters:
@@ -66,6 +74,8 @@ application:
                   description: Instance type
               - recipe-url:
                   description: Recipe URL
+              - plugin-names:
+                  description: Jenkins plugins list to install
             steps:
               - get-env-props:
                   action: getEnvironmentProperties
@@ -89,6 +99,9 @@ application:
                     recipeUrl: "{$.recipe-url}"
                     runList: [ "recipe[jenkins::default]" ]
                     roles: [ default ]
+                    jattrs:
+                      jenkins:
+                        plugins: "{$.plugin-names}"
                   output:
                     attrs: chefState
               - lb-add-server:
@@ -110,10 +123,10 @@ application:
               jenkins-admin-password:
                 value: "{$.attrs['*'].jenkins.admin_password}"
 
-          install-plugin:
+          install-plugins:
             parameters:
-              - plugins:
-                  description: List of plugins to install
+              - plugin-names:
+                  description: List of Jenkins plugins to install
             steps:
               - install-plugin:
                   action: "chefsolo"
@@ -123,4 +136,4 @@ application:
                     recipeUrl: "{$.recipe-url}"
                     jattrs:
                       jenkins:
-                        plugins: "{$.plugins}"
+                        plugins: "{$.plugin-names}"
