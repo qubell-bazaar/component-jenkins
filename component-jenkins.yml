@@ -1,0 +1,126 @@
+application:
+  configuration:
+    input.image: "us-east-1/ami-59a4a230"
+    input.image-user: "ubuntu"
+    input.instance-size: "m1.small"
+    input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
+
+  interfaces:
+    input:
+      image: "bind(lb#input.image)"
+      image-user: "bind(lb#input.image-user, jenkins#input.image-user)"
+      instance-size: "bind(lb#input.instance-size)"
+      recipe-url: "bind(jenkins#input.recipe-url)"
+    manage:
+      plugins: "bind(jenkins#actions.install-plugins)"
+    output:
+      jenkins-host: "bind(jenkins#result.jenkins-host)"
+      jenkins-url: "bind(jenkins#result.jenkins-url)"
+      jenkins-admin-password: "bind(jenkins#result.jenkins-admin-password)"
+
+  bindings:
+    - [jenkins, lb]
+
+  components:
+    lb:
+      type: reference.Submodule
+      configuration:
+        __locator.application-id: "Load Balancer"
+      interfaces:
+        input:
+          image: configuration(string)
+          image-user: configuration(string)
+          instance-size: configuration(string)
+        lb-manage:
+          add-servers: receive-command(list<string> app-hosts, string app-port, string lb-bucket => string entry-url)
+        output:
+          lb-stats: publish-signal(object)
+    jenkins:
+      type: workflow.Instance
+      interfaces:
+        input:
+          image-user: configuration(string)
+          recipe-url: configuration(string)
+        lb-output:
+          lb-stats: consume-signal(object)
+        lb-manage:
+          add-servers: send-command(list<string> app-hosts, string app-port, string lb-bucket => string entry-url)
+        actions:
+          install-plugins: receive-command(list<string> plugins)
+        result:
+          jenkins-host: publish-signal(string)
+          jenkins-url: publish-signal(string)
+          jenkins-admin-password: publish-signal(string)
+
+      required: [lb-output,lb-manage]
+
+      configuration:
+        configuration.workflows:
+          launch:
+            parameters:
+              - image:
+                  description: AMI id
+              - image-user:
+                  description: AMI ssh user
+              - instance-size:
+                  description: Instance type
+              - recipe-url:
+                  description: Recipe URL
+            steps:
+              - get-env-props:
+                  action: getEnvironmentProperties
+                  output:
+                    props: result
+              - provision-node:
+                  action: provisionVms
+                  precedingPhases: [ get-env-props ]
+                  parameters:
+                    roleName: default
+                    hardwareId: ""
+                    vmIdentity: "{$.image-user}"
+                    retryCount: 0
+                    staticIps: ["{$.props.lb-output.lb-stats.lb-host}"]
+                  output:
+                    jenkins-host: ips
+              - install-jenkins:
+                  action: chefsolo
+                  precedingPhases: [provision-node]
+                  parameters:
+                    recipeUrl: "{$.recipe-url}"
+                    runList: [ "recipe[jenkins::default]" ]
+                    roles: [ default ]
+                  output:
+                    attrs: chefState
+              - lb-add-server:
+                  action: serviceCall
+                  precedingPhases: [install-jenkins]
+                  parameters:
+                    timeout: 600
+                    service: lb-manage
+                    command: add-servers
+                    arguments:
+                      app-hosts: ["127.0.0.1"]
+                      app-port: "8080"
+                      lb-bucket: "http://roundrobin:80/"
+            return:
+              jenkins-host:
+                value: "{$.jenkins-host[0]}"
+              jenkins-url:
+                value: "http://{$.jenkins-host[0]}/"
+              jenkins-admin-password:
+                value: "{$.attrs['*'].jenkins.admin_password}"
+
+          install-plugin:
+            parameters:
+              - plugins:
+                  description: List of plugins to install
+            steps:
+              - install-plugin:
+                  action: "chefsolo"
+                  parameters:
+                    roles: [default]
+                    runList: ["recipe[jenkins::install_plugin]"]
+                    recipeUrl: "{$.recipe-url}"
+                    jattrs:
+                      jenkins:
+                        plugins: "{$.plugins}"
