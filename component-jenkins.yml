@@ -4,6 +4,7 @@ application:
     input.image-user: "ubuntu"
     input.instance-size: "m1.small"
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
+    input.jenkins-server-port: 8080
 
   interfaces:
     input:
@@ -11,9 +12,11 @@ application:
       image-user: "bind(jenkins#input.image-user)"
       instance-size: "bind(jenkins#input.instance-size)"
       recipe-url: "bind(jenkins#input.recipe-url)"
+      jenkins-server-port: "bind(jenkins#input.jenkins-server-port)"
+    manage:
+      add-slave-node: "bind(jenkins#actions.add-slave-node)"
     output:
       jenkins-server-host: "bind(jenkins#result.jenkins-server-host)"
-      jenkins-slave-host: "bind(jenkins#result.jenkins-slave-host)"
       jenkins-url: "bind(jenkins#result.jenkins-server-url)"
       jenkins-admin-password: "bind(jenkins#result.jenkins-admin-password)"
 
@@ -26,9 +29,11 @@ application:
           instance-size: configuration(string)
           image-user: configuration(string)
           recipe-url: configuration(string)
+          jenkins-server-port: configuration(int)
+        actions:
+          add-slave-node: receive-command(string image, string image-user, string instance-size, string recipe-url, string jenkins-server-url => string jenkins-slave-host)
         result:
           jenkins-server-host: publish-signal(string)
-          jenkins-slave-host: publish-signal(string)
           jenkins-server-url: publish-signal(string)
           jenkins-admin-password: publish-signal(list<string>)
 
@@ -44,6 +49,8 @@ application:
                   description: Instance type
               - recipe-url:
                   description: Recipe URL
+              - jenkins-server-port:
+                  description: Jenkins listen port
             steps:
               - launch-server:
                   action: provisionVms
@@ -54,16 +61,6 @@ application:
                     roleName: server
                   output:
                     jenkins-server-hosts: ips
-
-              - launch-slave:
-                  action: provisionVms
-                  parameters:
-                    hardwareId: "{$.instance-size}"
-                    imageId: "{$.image}"
-                    vmIdentity: "{$.image-user}"
-                    roleName: slave
-                  output:
-                    jenkins-slave-hosts: ips
 
               - install-jenkins-server:
                   action: chefsolo
@@ -76,12 +73,42 @@ application:
                       jenkins:
                         server:
                           host: "{$.jenkins-server-hosts[0]}"
+                          port: "{$.jenkins-server-port}"
                   output:
                     server-attrs: chefState
 
+            return:
+              jenkins-server-host:
+                value: "{$.jenkins-server-hosts[0]}"
+              jenkins-server-url:
+                value: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+              jenkins-admin-password:
+                value: "{$.server-attrs['*'].jenkins.server.admin_password}"
+
+          add-slave-node:
+            parameters:
+              - image:
+                  description: AMI id
+              - image-user:
+                  description: AMI ssh user
+              - instance-size:
+                  description: Instance type
+              - recipe-url:
+                  description: Recipe URL
+            steps:
+              - provision-slave-vm:
+                  action: provisionVms
+                  parameters:
+                    hardwareId: "{$.instance-size}"
+                    imageId: "{$.image}"
+                    vmIdentity: "{$.image-user}"
+                    roleName: slave
+                  output:
+                    jenkins-slave-hosts: ips
+
               - install-jenkins-slave:
                   action: chefsolo
-                  precedingPhases: [install-jenkins-server,launch-slave]
+                  precedingPhases: [provision-slave-vm]
                   parameters:
                     recipeUrl: "{$.recipe-url}"
                     runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
@@ -89,7 +116,7 @@ application:
                     jattrs:
                       jenkins:
                         server:
-                          url: "http://{$.jenkins-server-hosts[0]}:8080"
+                          url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
                         cli:
                           username: "admin"
                           password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
@@ -97,11 +124,5 @@ application:
                     slave-attrs: chefState
 
             return:
-              jenkins-server-host:
-                value: "{$.jenkins-server-hosts[0]}"
               jenkins-slave-host:
                 value: "{$.jenkins-slave-hosts[0]}"
-              jenkins-server-url:
-                value: "http://{$.jenkins-server-hosts[0]}:8080"
-              jenkins-admin-password:
-                value: "{$.server-attrs['*'].jenkins.server.admin_password}"
