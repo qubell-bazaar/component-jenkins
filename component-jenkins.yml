@@ -4,65 +4,35 @@ application:
     input.image-user: "ubuntu"
     input.instance-size: "m1.small"
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
-    input.plugin-names: ["envinject", "ws-cleanup", "rebuild", "jobConfigHistory", "greenballs", "build-user-vars-plugin"]
 
   interfaces:
     input:
-      image: "bind(lb#input.image)"
-      image-user: "bind(lb#input.image-user, jenkins#input.image-user)"
-      instance-size: "bind(lb#input.instance-size)"
+      image: "bind(jenkins#input.image)"
+      image-user: "bind(jenkins#input.image-user)"
+      instance-size: "bind(jenkins#input.instance-size)"
       recipe-url: "bind(jenkins#input.recipe-url)"
-      plugin-names: "bind(jenkins#input.plugin-names)"
-    manage:
-      plugins: "bind(jenkins#actions.install-plugins)"
     output:
-      jenkins-host: "bind(jenkins#result.jenkins-host)"
-      jenkins-url: "bind(jenkins#result.jenkins-url)"
+      jenkins-server-host: "bind(jenkins#result.jenkins-server-host)"
+      jenkins-slave-host: "bind(jenkins#result.jenkins-slave-host)"
+      jenkins-url: "bind(jenkins#result.jenkins-server-url)"
       jenkins-admin-password: "bind(jenkins#result.jenkins-admin-password)"
 
-  bindings:
-    - [jenkins, lb]
-
   components:
-    lb:
-      type: reference.Submodule
-      configuration:
-        __locator.application-id: "Load Balancer"
-      interfaces:
-        input:
-          image: configuration(string)
-          image-user: configuration(string)
-          instance-size: configuration(string)
-        lb-manage:
-          add-servers: receive-command(list<string> app-hosts, string app-port, string lb-bucket => string entry-url)
-        output:
-          lb-stats: publish-signal(object)
     jenkins:
       type: workflow.Instance
       interfaces:
         input:
+          image: configuration(string)
+          instance-size: configuration(string)
           image-user: configuration(string)
           recipe-url: configuration(string)
-          plugin-names: configuration(list<string>)
-        lb-output:
-          lb-stats: consume-signal(object)
-        lb-manage:
-          add-servers: send-command(list<string> app-hosts, string app-port, string lb-bucket => string entry-url)
-        actions:
-          install-plugins: receive-command(list<string> plugin-names)
         result:
-          jenkins-host: publish-signal(string)
-          jenkins-url: publish-signal(string)
+          jenkins-server-host: publish-signal(string)
+          jenkins-slave-host: publish-signal(string)
+          jenkins-server-url: publish-signal(string)
           jenkins-admin-password: publish-signal(list<string>)
 
-      required: [lb-output,lb-manage]
-
       configuration:
-        configuration.triggers:
-          input.plugin-names: install-plugins
-
-        configuration.propagateStatus: [install-plugins]
-
         configuration.workflows:
           launch:
             parameters:
@@ -74,66 +44,64 @@ application:
                   description: Instance type
               - recipe-url:
                   description: Recipe URL
-              - plugin-names:
-                  description: Jenkins plugins list to install
             steps:
-              - get-env-props:
-                  action: getEnvironmentProperties
-                  output:
-                    props: result
-              - provision-node:
+              - launch-server:
                   action: provisionVms
-                  precedingPhases: [ get-env-props ]
                   parameters:
-                    roleName: default
-                    hardwareId: ""
+                    hardwareId: "{$.instance-size}"
+                    imageId: "{$.image}"
                     vmIdentity: "{$.image-user}"
-                    retryCount: 0
-                    staticIps: ["{$.props.lb-output.lb-stats.lb-host}"]
+                    roleName: server
                   output:
-                    jenkins-host: ips
-              - install-jenkins:
-                  action: chefsolo
-                  precedingPhases: [provision-node]
-                  parameters:
-                    recipeUrl: "{$.recipe-url}"
-                    runList: [ "recipe[jenkins::default]" ]
-                    roles: [ default ]
-                    jattrs:
-                      jenkins:
-                        plugins: "{$.plugin-names}"
-                  output:
-                    attrs: chefState
-              - lb-add-server:
-                  action: serviceCall
-                  precedingPhases: [install-jenkins]
-                  parameters:
-                    timeout: 600
-                    service: lb-manage
-                    command: add-servers
-                    arguments:
-                      app-hosts: ["127.0.0.1"]
-                      app-port: "8080"
-                      lb-bucket: "http://roundrobin:80/"
-            return:
-              jenkins-host:
-                value: "{$.jenkins-host[0]}"
-              jenkins-url:
-                value: "http://{$.jenkins-host[0]}/"
-              jenkins-admin-password:
-                value: "{$.attrs['*'].jenkins.admin_password}"
+                    jenkins-server-hosts: ips
 
-          install-plugins:
-            parameters:
-              - plugin-names:
-                  description: List of Jenkins plugins to install
-            steps:
-              - install-plugin:
-                  action: "chefsolo"
+              - launch-slave:
+                  action: provisionVms
                   parameters:
-                    roles: [default]
-                    runList: ["recipe[jenkins::install_plugin]"]
+                    hardwareId: "{$.instance-size}"
+                    imageId: "{$.image}"
+                    vmIdentity: "{$.image-user}"
+                    roleName: slave
+                  output:
+                    jenkins-slave-hosts: ips
+
+              - install-jenkins-server:
+                  action: chefsolo
+                  precedingPhases: [launch-server]
+                  parameters:
                     recipeUrl: "{$.recipe-url}"
+                    runList: [ "recipe[cookbook_qubell_jenkins::default]" ]
+                    roles: [ server ]
                     jattrs:
                       jenkins:
-                        plugins: "{$.plugin-names}"
+                        server:
+                          host: "{$.jenkins-server-hosts[0]}"
+                  output:
+                    server-attrs: chefState
+
+              - install-jenkins-slave:
+                  action: chefsolo
+                  precedingPhases: [install-jenkins-server,launch-slave]
+                  parameters:
+                    recipeUrl: "{$.recipe-url}"
+                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
+                    roles: [ slave ]
+                    jattrs:
+                      jenkins:
+                        server:
+                          url: "http://{$.jenkins-server-hosts[0]}:8080"
+                        cli:
+                          username: "admin"
+                          password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+                  output:
+                    slave-attrs: chefState
+
+            return:
+              jenkins-server-host:
+                value: "{$.jenkins-server-hosts[0]}"
+              jenkins-slave-host:
+                value: "{$.jenkins-slave-hosts[0]}"
+              jenkins-server-url:
+                value: "http://{$.jenkins-server-hosts[0]}:8080"
+              jenkins-admin-password:
+                value: "{$.server-attrs['*'].jenkins.server.admin_password}"
