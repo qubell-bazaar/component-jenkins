@@ -5,6 +5,7 @@ application:
     input.instance-size: "m1.small"
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
     input.jenkins-server-port: 8080
+    input.install-method: "package"
 
   interfaces:
     input:
@@ -13,13 +14,17 @@ application:
       instance-size: "bind(jenkins#input.instance-size)"
       recipe-url: "bind(jenkins#input.recipe-url)"
       jenkins-server-port: "bind(jenkins#input.jenkins-server-port)"
+      install-method: "bind(jenkins#input.install-method)"
     manage:
       add-slave-node: "bind(jenkins#actions.add-slave-node)"
       plugins: "bind(jenkins#actions.plugins-management)"
+      restore-backup: "bind(jenkins#actions.restore-backup)"
     output:
       jenkins-server-host: "bind(jenkins#result.jenkins-server-host)"
       jenkins-url: "bind(jenkins#result.jenkins-server-url)"
       jenkins-admin-password: "bind(jenkins#result.jenkins-admin-password)"
+      jenkins-server-pubkey: "bind(jenkins#result.jenkins-server-pubkey)"
+      jenkins-slave-hosts: "bind(jenkins#result.jenkins-slave-hosts)"
 
   components:
     jenkins:
@@ -31,13 +36,18 @@ application:
           image-user: configuration(string)
           recipe-url: configuration(string)
           jenkins-server-port: configuration(int)
+          install-method: configuration(string)
         actions:
-          add-slave-node: receive-command(string image, string image-user, string instance-size, string recipe-url, string jenkins-server-url => string jenkins-slave-host)
-          plugins-management: receive-command(list<string> plugins-info, string plugins-action)
+          #add-slave-node: receive-command(string image, string image-user, string instance-size, string recipe-url, string jenkins-server-url, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
+          add-slave-node: receive-command(string image, string image-user, string instance-size, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
+          plugins-management: receive-command(object plugins-info, string plugins-action)
+          restore-backup: receive-command(string backup-uri, string restore-type)
         result:
           jenkins-server-host: publish-signal(string)
           jenkins-server-url: publish-signal(string)
-          jenkins-admin-password: publish-signal(list<string>)
+          jenkins-admin-password: publish-signal(string)
+          jenkins-server-pubkey: publish-signal(string)
+          jenkins-slave-hosts: publish-signal(list<string>)
 
       configuration:
         configuration.workflows:
@@ -53,6 +63,8 @@ application:
                   description: Recipe URL
               - jenkins-server-port:
                   description: Jenkins listen port
+              - install-method:
+                  description: Installation method (package, war)
             steps:
               - provision-server-vm:
                   action: provisionVms
@@ -76,16 +88,21 @@ application:
                         server:
                           host: "{$.jenkins-server-hosts[0]}"
                           port: "{$.jenkins-server-port}"
+                          install_method: "{$.install-method}"
                   output:
                     server-attrs: chefState
 
             return:
               jenkins-server-host:
                 value: "{$.jenkins-server-hosts[0]}"
+              jenkins-slave-hosts:
+                value: []
               jenkins-server-url:
                 value: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
               jenkins-admin-password:
-                value: "{$.server-attrs['*'].jenkins.server.admin_password}"
+                value: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+              jenkins-server-pubkey:
+                value: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
 
           add-slave-node:
             parameters:
@@ -95,8 +112,17 @@ application:
                   description: AMI ssh user
               - instance-size:
                   description: Instance type
-              - recipe-url:
-                  description: Recipe URL
+              #- recipe-url:
+              #    description: Recipe URL
+              #- jenkins-server-url:
+              #    description: Jenkins server URL
+              - agent-type:
+                  default: jnlp
+                  description: Jenkins slave node agent type (jnlp, ssh, windows)
+              - node-availability:
+                  default: demand
+                  description: Jenkins slave node availability (demand, always)
+
             steps:
               - provision-slave-vm:
                   action: provisionVms
@@ -119,6 +145,10 @@ application:
                       jenkins:
                         server:
                           url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                          pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                        node:
+                          agent_type: "{$.agent-type}"
+                          availability: "{$.node-availability}"
                         cli:
                           username: "admin"
                           password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
@@ -126,14 +156,15 @@ application:
                     slave-attrs: chefState
 
             return:
-              jenkins-slave-host:
-                value: "{$.jenkins-slave-hosts[0]}"
+              jenkins-slave-hosts:
+                value: "{$.jenkins-slave-hosts}"
 
           plugins-management:
             parameters:
               - plugins-info:
                   description: "Plugins name, version and URL as hash"
               - plugins-action:
+                  default: install
                   description: "Install or remove"
             steps:
               - plugins-management:
@@ -147,3 +178,25 @@ application:
                         server:
                           plugins: "{$.plugins-info}"
                           plugins_action: "{$.plugins-action}"
+
+          restore-backup:
+            parameters:
+              - backup-uri:
+                  description: URI to backup archive (zip or tar.gz)
+              - restore-type:
+                  description: Backup contents (full, jobs, job)
+                  #full - restore full jenkins backup
+                  #jobs - will restore all jobs
+                  #job - restore single job
+            steps:
+              - restore-backup:
+                  action: chefsolo
+                  parameters:
+                    recipeUrl: "{$.recipe-url}"
+                    runList: ["recipe[cookbook_qubell_jenkins::restore_backup]"]
+                    roles: [server]
+                    jattrs:
+                      jenkins:
+                        server:
+                          restore_backup: "{$.restore-type}"
+                        backup_uri: "{$.backup-uri}"
