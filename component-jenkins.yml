@@ -6,6 +6,7 @@ application:
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
     input.jenkins-server-port: 8080
     input.install-method: "package"
+    input.jenkins-version: "1.568"
 
   interfaces:
     input:
@@ -15,6 +16,7 @@ application:
       recipe-url: "bind(jenkins#input.recipe-url)"
       jenkins-server-port: "bind(jenkins#input.jenkins-server-port)"
       install-method: "bind(jenkins#input.install-method)"
+      jenkins-version: "bind(jenkins#input.jenkins-version)"
     manage:
       add-slave-node: "bind(jenkins#actions.add-slave-node)"
       plugins: "bind(jenkins#actions.plugins-management)"
@@ -37,8 +39,8 @@ application:
           recipe-url: configuration(string)
           jenkins-server-port: configuration(int)
           install-method: configuration(string)
+          jenkins-version: configuration(string)
         actions:
-          #add-slave-node: receive-command(string image, string image-user, string instance-size, string recipe-url, string jenkins-server-url, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
           add-slave-node: receive-command(string image, string image-user, string instance-size, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
           plugins-management: receive-command(object plugins-info, string plugins-action)
           restore-backup: receive-command(string backup-uri, string restore-type)
@@ -65,6 +67,8 @@ application:
                   description: Jenkins listen port
               - install-method:
                   description: Installation method (package, war)
+              - jenkins-version:
+                  description: Jenkins version to install
             steps:
               - provision-server-vm:
                   action: provisionVms
@@ -89,6 +93,7 @@ application:
                           host: "{$.jenkins-server-hosts[0]}"
                           port: "{$.jenkins-server-port}"
                           install_method: "{$.install-method}"
+                          version: "{$.jenkins-version}"
                   output:
                     server-attrs: chefState
 
@@ -112,10 +117,6 @@ application:
                   description: AMI ssh user
               - instance-size:
                   description: Instance type
-              #- recipe-url:
-              #    description: Recipe URL
-              #- jenkins-server-url:
-              #    description: Jenkins server URL
               - agent-type:
                   default: jnlp
                   description: Jenkins slave node agent type (jnlp, ssh, windows)
