@@ -1,3 +1,4 @@
+
 application:
   configuration:
     input.image: "us-east-1/ami-59a4a230"
@@ -6,7 +7,11 @@ application:
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
     input.jenkins-server-port: 8080
     input.install-method: "package"
-    input.jenkins-version: "1.568"
+    input.jenkins-version: ""
+    input.plugins-info: []
+    input.plugins-action: "install"
+    input.backup-uri: ""
+    input.restore-type: ""
 
   interfaces:
     input:
@@ -17,6 +22,10 @@ application:
       jenkins-server-port: "bind(jenkins#input.jenkins-server-port)"
       install-method: "bind(jenkins#input.install-method)"
       jenkins-version: "bind(jenkins#input.jenkins-version)"
+      plugins-info: "bind(jenkins#input.plugins-info)"
+      plugins-action: "bind(jenkins#input.plugins-action)"
+      backup-uri: "bind(jenkins#input.backup-uri)"
+      restore-type: "bind(jenkins#input.restore-type)"
     manage:
       add-slave-node: "bind(jenkins#actions.add-slave-node)"
       plugins: "bind(jenkins#actions.plugins-management)"
@@ -40,7 +49,12 @@ application:
           jenkins-server-port: configuration(int)
           install-method: configuration(string)
           jenkins-version: configuration(string)
+          plugins-info: configuration(object)
+          plugins-action: configuration(string)
+          backup-uri: configuration(string)
+          restore-type: configuration(string)
         actions:
+          #add-slave-node: receive-command(string image, string image-user, string instance-size, string recipe-url, string jenkins-server-url, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
           add-slave-node: receive-command(string image, string image-user, string instance-size, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
           plugins-management: receive-command(object plugins-info, string plugins-action)
           restore-backup: receive-command(string backup-uri, string restore-type)
@@ -69,6 +83,18 @@ application:
                   description: Installation method (package, war)
               - jenkins-version:
                   description: Jenkins version to install
+              - plugins-info:
+                  description: "Plugins name, version and URL as hash"
+              - plugins-action:
+                  default: install
+                  description: "Install or remove"
+              - backup-uri:
+                  description: URI to backup archive (zip or tar.gz)
+              - restore-type:
+                  description: Backup contents (full, jobs, job)
+                  #full - restore full jenkins backup
+                  #jobs - will restore all jobs
+                  #job - restore single job
             steps:
               - provision-server-vm:
                   action: provisionVms
@@ -88,12 +114,16 @@ application:
                     runList: [ "recipe[cookbook_qubell_jenkins::default]" ]
                     roles: [ server ]
                     jattrs:
+                      qubell_jenkins: 
+                        version: "{$.jenkins-version}"
+                        plugins: "{$.plugins-info}"
+                        backup_uri: "{$.backup-uri}"
+                        restore_type: "{$.restore-type}"
                       jenkins:
                         server:
                           host: "{$.jenkins-server-hosts[0]}"
                           port: "{$.jenkins-server-port}"
                           install_method: "{$.install-method}"
-                          version: "{$.jenkins-version}"
                   output:
                     server-attrs: chefState
 
@@ -117,6 +147,10 @@ application:
                   description: AMI ssh user
               - instance-size:
                   description: Instance type
+              #- recipe-url:
+              #    description: Recipe URL
+              #- jenkins-server-url:
+              #    description: Jenkins server URL
               - agent-type:
                   default: jnlp
                   description: Jenkins slave node agent type (jnlp, ssh, windows)
@@ -197,7 +231,6 @@ application:
                     runList: ["recipe[cookbook_qubell_jenkins::restore_backup]"]
                     roles: [server]
                     jattrs:
-                      jenkins:
-                        server:
-                          restore_backup: "{$.restore-type}"
+                      qubell_jenkins:
+                        restore_type: "{$.restore-type}"
                         backup_uri: "{$.backup-uri}"
