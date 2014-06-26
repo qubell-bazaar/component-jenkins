@@ -1,0 +1,33 @@
+env:
+ global:
+
+    ## Fill environment variables:
+    ## (You may secure your keys using: http://about.travis-ci.org/docs/user/encryption-keys/)
+
+    - "QUBELL_TENANT=https://express.qubell.com"
+    ## QUBELL_USER, QUBELL_PASSWORD 
+    ## - These are for Qubell authentication, use user with Basic auth
+
+    ## PROVIDER_NAME, PROVIDER_TYPE, PROVIDER_REGION, PROVIDER_IDENTITY, PROVIDER_CREDENTIAL
+    ## - These are for Cloud Account setting, when you need to provision virtual machines
+    ## - Identity and Credential must be secured
+
+    ## ARTIFACTS_AWS_REGION, ARTIFACTS_S3_BUCKET, ARTIFACTS_AWS_ACCESS_KEY_ID, ARTIFACTS_AWS_SECRET_ACCESS_KEY
+    ## - These are for publishing Cookbooks
+    ## - Access Key Id and Secret Access Key must be secured
+
+    ## GIT_NAME, GIT_EMAIL, GH_TOKEN
+    ## - These are for push back to github of verified cookbooks
+    ## - All must be secured
+
+language: python
+python:
+  - "2.7"
+
+install: "pip install -r test/requirements.txt"
+
+before_script:
+   - gem install travis-artifacts --no-ri --no-rdoc
+   - git submodule update --init --recursive
+
+script: ./build.sh
