@@ -45,9 +45,8 @@ class JenkinsDevComponentTestCase(BaseComponentTestCase):
         "name": name,
         "file": os.path.realpath(os.path.join(os.path.dirname(__file__), '../%s.yml' % name))
     }]
-    port = "8080"
     @instance(byApplication=name)
-    @values({"output.jenkins-server-host": "hosts"})
+    @values({"output.jenkins-server-host": "hosts", "8080":"port"})
     def test_port(self, instance, hosts, port):
         import socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
