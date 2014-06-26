@@ -1,3 +1,4 @@
+#
 site :opscode
 
 cookbook "apt", ref: "1.1.1"
