@@ -47,6 +47,10 @@ class JenkinsDevComponentTestCase(BaseComponentTestCase):
     }]
     @instance(byApplication=name)
     @values({"output.jenkins-server-host": "hosts"})
+    @classmethod
+    def timeout(cls):
+        return 60
+
     def test_port(self, instance, hosts, port=8080):
         import socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
