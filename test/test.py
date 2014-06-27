@@ -52,6 +52,8 @@ class JenkinsDevComponentTestCase(BaseComponentTestCase):
     @values({"output.jenkins-server-host": "hosts"})
     def test_port(self, instance, hosts, port=8080):
         import socket
+        import time
+        time.sleep(300)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         result = sock.connect_ex((hosts, int(port)))
 
