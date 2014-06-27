@@ -1,8 +1,8 @@
 
 application:
   configuration:
-    input.image: "us-east-1/ami-59a4a230"
-    input.image-user: "ubuntu"
+    input.image: "us-east-1/ami-1ba18d72"
+    input.image-user: "ec2-user"
     input.instance-size: "m1.small"
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
     input.jenkins-server-port: 8080
