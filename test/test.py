@@ -39,18 +39,17 @@ from qubell.api.private.testing import instance, environment, workflow, values
         }]
     }
 })
-@classmethod
-def timeout(cls):
-    return 60
 class JenkinsDevComponentTestCase(BaseComponentTestCase):
     name = "component-jenkins"
     apps = [{
         "name": name,
         "file": os.path.realpath(os.path.join(os.path.dirname(__file__), '../%s.yml' % name))
     }]
+    @classmethod
+    def timeout(cls):
+        return 60
     @instance(byApplication=name)
     @values({"output.jenkins-server-host": "hosts"})
-
     def test_port(self, instance, hosts, port=8080):
         import socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
