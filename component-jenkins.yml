@@ -6,7 +6,7 @@ application:
     input.slave-linux-os: {image: "us-east-1/ami-1ba18d72", identity: ec2-user}
     input.slave-linux-instance-size: "m1.small"
     input.slave-linux-quantity: "1"
-    input.slave-linux-agent-type: "ssh"
+    input.slave-linux-agent-type: "jnlp"
     input.slave-linux-availability: "always"
     input.recipe-url: "https://dl.dropboxusercontent.com/u/250836/jenkins.tar.gz"
     input.jenkins-server-port: 8080
@@ -76,7 +76,6 @@ application:
           backup-uri: configuration(string)
           restore-type: configuration(string)
         actions:
-          #add-slave-node: receive-command(string image, string image-user, string instance-size, string recipe-url, string jenkins-server-url, string node-availability, string agent-type => list<string> jenkins-slave-hosts)
           add-linux-slave: receive-command(object slave-linux-os, string slave-linux-instance-size, string slave-linux-availability, string slave-linux-agent-type, string slave-linux-quantity => list<string> jenkins-slave-linux-hosts)
           plugins-management: receive-command(object plugins-info, string plugins-action)
           restore-backup: receive-command(string backup-uri, string restore-type)
@@ -213,7 +212,7 @@ application:
               - slave-linux-instance-size:
                   description: Slave instance size
               - slave-linux-agent-type:
-                  default: ssh
+                  default: jnlp
                   description: Jenkins slave node agent type (jnlp, ssh)
               - slave-linux-availability:
                   default: always
@@ -231,11 +230,10 @@ application:
                       - |
                           curl -o /usr/sbin/jq http://stedolan.github.io/jq/download/linux64/jq
                           chmod 755 /usr/sbin/jq
-                          java -jar /tmp/jenkins-cli.jar -s {$.jenkins-server-url} login --username admin --password {$.jenkins-admin-password}
                           wget -c {$.jenkins-server-url}/jnlpJars/jenkins-cli.jar -O /tmp/jenkins-cli.jar 
                           java -jar /tmp/jenkins-cli.jar -s {$.jenkins-server-url} login --username admin --password {$.jenkins-admin-password}
                           curl -s {$.jenkins-server-url}/computer/api/json?pretty=true \
-                          -uadmin:{$.jenkins-admin-password} | /usr/sbin/jq '[.computer[].displayName] - ["master"] | .[]' | tr -d '"' |xargs -n1 java -jar /tmp/jenkins-cli.jar -s {$.jenkins-server-url} delete-node
+                          -uadmin:{$.jenkins-admin-password} | /usr/sbin/jq '[.computer[].displayName] - ["master"] | .[]' | tr -d '"' |xargs -n1 --no-run-if-empty java -jar /tmp/jenkins-cli.jar -s {$.jenkins-server-url} delete-node
 
               - provision-linux-slave-vm:
                   action: provisionVms
@@ -248,12 +246,6 @@ application:
                     roleName: slave-linux
                   output:
                     jenkins-slave-linux-hosts: ips
-
-              - wait-provision:
-                  action: wait
-                  precedingPhases: [provision-linux-slave-vm]
-                  parameters:
-                    delay: 5 minutes
 
               - install-jenkins-slave:
                   action: chefsolo
