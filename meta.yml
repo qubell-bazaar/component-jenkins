@@ -1,0 +1,15 @@
+kit:
+  name: "Jenkins CI"
+  link: https://github.com/qubell-bazaar/component-jenkins
+  applications:
+    - name: "CI Server"
+      manifest: https://raw.github.com/qubell-bazaar/component-jenkins/v0.1.1/component-jenkins.yml
+  provider:
+    name: "Qubell"
+    link: http://qubell.com
+  documentation:
+    overview: |
+      This application requires the following items to be configured in your environment:
+        * CloudServers account;
+        * Ports 8080 open on the ﬁrewall.
+      Please refer to the Getting Started for step-by-step instructions on how to configure your environment.
