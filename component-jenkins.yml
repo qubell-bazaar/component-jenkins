@@ -249,7 +249,7 @@ application:
 
               - install-jenkins-slave:
                   action: chefsolo
-                  precedingPhases: [wait-provision]
+                  precedingPhases: [provision-linux-slave-vm]
                   parameters:
                     recipeUrl: "{$.recipe-url}"
                     runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
@@ -297,10 +297,10 @@ application:
               - backup-uri:
                   description: URI to backup archive (zip or tar.gz)
               - restore-type:
-                  description: Backup contents (full, jobs, job)
-                  #full - restore full jenkins backup
+                  description: Backup contents (jobs, job)
                   #jobs - will restore all jobs
                   #job - restore single job
+
             steps:
               - restore-backup:
                   action: chefsolo
@@ -310,6 +310,46 @@ application:
                     roles: [server]
                     jattrs:
                       qubell_jenkins:
-                        restore_type: "{$.restore-type}"
+                        restore_type: "full"
                         backup_uri: "{$.backup-uri}"
+                  output:
+                    server-attrs: chefState
+
+              - wait-jenkins-server:
+                  action: wait
+                  precedingPhases: [restore-backup]
+                  parameters:
+                    delay: 5 minutes
+
+              - provision-slaves-vms:
+                  action: provisionVms
+                  precedingPhases: [restore-backup]
+                  parameters:
+                    roleName: slave-linux
+                    hardwareId: ""
+                    vmIdentity: "{$.slave-linux-os.identity}"
+                    retryCount: 0
+                    staticIps: "{$.jenkins-slave-linux-hosts}"
+
+              - install-jenkins-slave:
+                  action: chefsolo
+                  precedingPhases: [provision-slaves-vms, wait-jenkins-server]
+                  parameters:
+                    recipeUrl: "{$.recipe-url}"
+                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
+                    roles: [ slave-linux ]
+                    jattrs:
+                      jenkins:
+                        server:
+                          url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                          pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                        node:
+                          agent_type: "{$.slave-linux-agent-type}"
+                          availability: "{$.slave-linux-availability}"
+                        cli:
+                          username: "admin"
+                          password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+            return:
+              jenkins-server-pubkey:
+                value: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
 
