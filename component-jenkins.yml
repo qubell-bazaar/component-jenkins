@@ -8,7 +8,7 @@ application:
     input.slave-linux-quantity: "1"
     input.slave-linux-agent-type: "jnlp"
     input.slave-linux-availability: "always"
-    input.recipe-url: "https://s3.amazonaws.com/qubell-starter-kit-artifacts/qubell-bazaar/component-jenkins-cookbooks-stable-a205973.tar.gz"
+    input.recipe-url: "https://s3.amazonaws.com/qubell-starter-kit-artifacts/qubell-bazaar/component-jenkins-cookbooks-stable-bb9d12e.tar.gz"
     input.jenkins-server-port: 8080
     input.install-method: "package"
     input.jenkins-version: ""
