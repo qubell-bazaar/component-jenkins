@@ -33,6 +33,7 @@ application:
       configuration:
         configuration.triggers:
           input.slave-linux-quantity: update
+        configuration.propagateStatus: [ update, setup-linux-slave ]
         configuration.workflows:
           update: &update
             parameters:
