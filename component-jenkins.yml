@@ -3,11 +3,11 @@ application:
   configuration:
     input.server-os: {image: "us-east-1/ami-1ba18d72", identity: ec2-user}
     input.server-instance-size: "m1.small"
-    input.slave-linux-os: {image: "us-east-1/ami-1ba18d72", identity: ec2-user}
+    input.slave-linux-os: {image: "us-east-1/ami-1ba18d72", identity: "ec2-user"}
     input.slave-linux-instance-size: "m1.small"
     input.slave-linux-quantity: "1"
-    input.slave-linux-agent-type: "jnlp"
-    input.slave-linux-availability: "always"
+    input.agent-type: "jnlp"
+    input.availability: "always"
     input.recipe-url: "https://s3.amazonaws.com/qubell-starter-kit-artifacts/qubell-bazaar/component-jenkins-cookbooks-stable-bb9d12e.tar.gz"
     input.jenkins-server-port: 8080
     input.install-method: "package"
@@ -19,34 +19,50 @@ application:
 
   interfaces:
     input:
-      server-os: "bind(jenkins#input.server-os)"
-      server-instance-size: "bind(jenkins#input.server-instance-size)"
-      slave-linux-os: "bind(jenkins#input.slave-linux-os)"
-      slave-linux-instance-size: "bind(jenkins#input.slave-linux-instance-size)"
-      slave-linux-quantity: "bind(jenkins#input.slave-linux-quantity)"
-      slave-linux-agent-type: "bind(jenkins#input.slave-linux-agent-type)"
-      slave-linux-availability: "bind(jenkins#input.slave-linux-availability)"
-      recipe-url: "bind(jenkins#input.recipe-url)"
-      jenkins-server-port: "bind(jenkins#input.jenkins-server-port)"
-      install-method: "bind(jenkins#input.install-method)"
-      jenkins-version: "bind(jenkins#input.jenkins-version)"
-      plugins-info: "bind(jenkins#input.plugins-info)"
-      plugins-action: "bind(jenkins#input.plugins-action)"
-      backup-uri: "bind(jenkins#input.backup-uri)"
-      restore-type: "bind(jenkins#input.restore-type)"
+      server-os: "bind(jenkins-server#input.server-os)"
+      server-instance-size: "bind(jenkins-server#input.server-instance-size)"
+      recipe-url: "bind(jenkins-server#input.recipe-url, jenkins-linux-slave#input.recipe-url)"
+      jenkins-server-port: "bind(jenkins-server#input.jenkins-server-port)"
+      install-method: "bind(jenkins-server#input.install-method)"
+      jenkins-version: "bind(jenkins-server#input.jenkins-version)"
+      plugins-info: "bind(jenkins-server#input.plugins-info)"
+      plugins-action: "bind(jenkins-server#input.plugins-action)"
+      backup-uri: "bind(jenkins-server#input.backup-uri)"
+      restore-type: "bind(jenkins-server#input.restore-type)"
+      slave-linux-os: "bind(jenkins-linux-slave#input.slave-linux-os)"
+      slave-linux-instance-size: "bind(jenkins-linux-slave#input.slave-linux-instance-size)"
+      slave-linux-quantity: "bind(jenkins-linux-slave#input.slave-linux-quantity)"
+      agent-type: "bind(jenkins-server#input.agent-type)"
+      availability: "bind(jenkins-server#input.availability)"
     manage:
-      add-linux-slave: "bind(jenkins#actions.add-linux-slave)"
-      plugins: "bind(jenkins#actions.plugins-management)"
-      restore-backup: "bind(jenkins#actions.restore-backup)"
+      plugins: "bind(jenkins-server#actions.plugins-management)"
+      restore-backup: "bind(jenkins-server#actions.restore-backup)"
     output:
-      jenkins-server-host: "bind(jenkins#result.jenkins-server-host)"
-      jenkins-url: "bind(jenkins#result.jenkins-server-url)"
-      jenkins-admin-password: "bind(jenkins#result.jenkins-admin-password)"
-      jenkins-server-pubkey: "bind(jenkins#result.jenkins-server-pubkey)"
-      jenkins-slave-linux-hosts: "bind(jenkins#result.jenkins-slave-linux-hosts)"
+      jenkins-server-host: "bind(jenkins-server#result.jenkins-server-host)"
+      jenkins-url: "bind(jenkins-server#result.jenkins-server-url)"
+      jenkins-admin-password: "bind(jenkins-server#result.jenkins-admin-password)"
+      jenkins-server-pubkey: "bind(jenkins-server#result.jenkins-server-pubkey)"
+
+  bindings:
+    - [jenkins-server, jenkins-linux-slave]
 
   components:
-    jenkins:
+    jenkins-linux-slave:
+      type: reference.Submodule
+      configuration:
+        __locator.application-id: "jenkins linux slave"
+      interfaces:
+        input:
+          slave-linux-os: configuration(object)
+          slave-linux-instance-size: configuration(string)
+          slave-linux-quantity: configuration(string)
+          recipe-url: configuration(string)
+        manage:
+          setup-linux-slave: receive-command(string agent-type, string availability, string jenkins-server-url, string jenkins-server-user, string jenkins-server-password, string jenkins-server-pubkey)
+        output:
+          jenkins-linux-slaves: publish-signal(object)
+
+    jenkins-server:
       type: workflow.Instance
       interfaces:
         input:
@@ -57,16 +73,6 @@ application:
               centos-6.4: {image: "us-east-1/ami-ee698586", identity: root}
               ubuntu-12.04: {image: "us-east-1/ami-d0f89fb9", identity: ubuntu}
           server-instance-size: configuration(string)
-          slave-linux-os:
-            type: configuration(map<string,object>)
-            suggestions:
-              amazon-linux: {image: "us-east-1/ami-1ba18d72", identity: ec2-user}
-              centos-6.4: {image: "us-east-1/ami-ee698586", identity: root}
-              ubuntu-12.04: {image: "us-east-1/ami-d0f89fb9", identity: ubuntu}
-          slave-linux-instance-size: configuration(string)
-          slave-linux-agent-type: configuration(string)
-          slave-linux-availability: configuration(string)
-          slave-linux-quantity: configuration(string)
           recipe-url: configuration(string)
           jenkins-server-port: configuration(int)
           install-method: configuration(string)
@@ -75,8 +81,13 @@ application:
           plugins-action: configuration(string)
           backup-uri: configuration(string)
           restore-type: configuration(string)
+          agent-type: configuration(string)
+          availability: configuration(string)
+        linux-slaves:
+          jenkins-linux-slaves: consume-signal(object)
+        manage-slaves:
+          setup-linux-slave: send-command(string agent-type, string availability, string jenkins-server-url, string jenkins-server-user, string jenkins-server-password, string jenkins-server-pubkey)
         actions:
-          add-linux-slave: receive-command(object slave-linux-os, string slave-linux-instance-size, string slave-linux-availability, string slave-linux-agent-type, string slave-linux-quantity => list<string> jenkins-slave-linux-hosts)
           plugins-management: receive-command(object plugins-info, string plugins-action)
           restore-backup: receive-command(string backup-uri, string restore-type)
         result:
@@ -84,14 +95,15 @@ application:
           jenkins-server-url: publish-signal(string)
           jenkins-admin-password: publish-signal(string)
           jenkins-server-pubkey: publish-signal(string)
-          jenkins-slave-linux-hosts: publish-signal(list<string>)
+
+      required: [linux-slaves, manage-slaves]
 
       configuration:
         configuration.triggers:
           input.plugins-info: plugins-management
           input.backup-uri: restore-backup
-          input.slave-linux-quantity: add-linux-slave
-        configuration.propagateStatus: [plugins-management,restore-backup,add-linux-slave]
+          linux-slaves.jenkins-linux-slaves: scale-linux-slaves
+        configuration.propagateStatus: [plugins-management,restore-backup,scale-linux-slaves]
         configuration.workflows:
           launch:
             parameters:
@@ -99,15 +111,9 @@ application:
                   description: Jenkins server OS parameters
               - server-instance-size:
                   description: Server instance size
-              - slave-linux-os:
-                  description: Jenkins slave OS parameters
-              - slave-linux-instance-size:
-                  description: Slave instance size
-              - slave-linux-quantity:
-                  description: Quantity of slave nodes to run
-              - slave-linux-agent-type:
+              - agent-type:
                   description: Slave agent type for linux (ssh, jnlp)
-              - slave-linux-availability:
+              - availability:
                   description: Slave node availability (demand, always)
               - recipe-url:
                   description: Recipe URL
@@ -130,8 +136,13 @@ application:
                   #jobs - will restore all jobs
                   #job - restore single job
             steps:
+              - get-env-props:
+                  action: getEnvironmentProperties
+                  output:
+                    props: result
               - provision-server-vm:
                   action: provisionVms
+                  precedingPhases: [get-env-props]
                   parameters:
                     hardwareId: "{$.server-instance-size}"
                     imageId: "{$.server-os.image}"
@@ -140,18 +151,7 @@ application:
                   output:
                     jenkins-server-hosts: ips
 
-              - provision-slave-linux-vm:
-                  action: provisionVms
-                  parameters:
-                    hardwareId: "{$.slave-linux-instance-size}"
-                    imageId: "{$.slave-linux-os.image}"
-                    vmIdentity: "{$.slave-linux-os.identity}"
-                    targetQuantity: "{$.slave-linux-quantity}"
-                    roleName: slave-linux
-                  output:
-                    jenkins-slave-linux-hosts: ips
-
-              - install-jenkins-server:
+              - setup-jenkins-server:
                   action: chefsolo
                   precedingPhases: [provision-server-vm]
                   parameters:
@@ -172,32 +172,23 @@ application:
                   output:
                     server-attrs: chefState
 
-              - install-jenkins-slave:
-                  action: chefsolo
-                  precedingPhases: [provision-slave-linux-vm, install-jenkins-server]
-                  parameters:
-                    recipeUrl: "{$.recipe-url}"
-                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
-                    roles: [ slave-linux ]
-                    jattrs:
-                      jenkins:
-                        server:
-                          url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
-                          pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
-                        node:
-                          agent_type: "{$.slave-linux-agent-type}"
-                          availability: "{$.slave-linux-availability}"
-                        cli:
-                          username: "admin"
-                          password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
-                  output:
-                    slave-attrs: chefState
-
+              - setup-jenkins-slave:
+                  action: serviceCall
+                  precedingPhases: [setup-jenkins-server]
+                  parameters: 
+                    timeout: 600
+                    service: manage-slaves
+                    command: setup-linux-slave
+                    arguments:
+                      agent-type: "{$.agent-type}"
+                      availability: "{$.availability}"
+                      jenkins-server-url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                      jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                      jenkins-server-user: "admin"
+                      jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
             return:
               jenkins-server-host:
                 value: "{$.jenkins-server-hosts[0]}"
-              jenkins-slave-linux-hosts:
-                value: "{$.jenkins-slave-linux-hosts}"
               jenkins-server-url:
                 value: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
               jenkins-admin-password:
@@ -205,16 +196,16 @@ application:
               jenkins-server-pubkey:
                 value: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
 
-          add-linux-slave:
+          scale-linux-slaves:
             parameters:
               - slave-linux-os:
                   description: Slave OS parameters 
               - slave-linux-instance-size:
                   description: Slave instance size
-              - slave-linux-agent-type:
+              - agent-type:
                   default: jnlp
                   description: Jenkins slave node agent type (jnlp, ssh)
-              - slave-linux-availability:
+              - availability:
                   default: always
                   description: Jenkins slave node availability (demand, always)
               - slave-linux-quantity:
@@ -235,42 +226,20 @@ application:
                           curl -s {$.jenkins-server-url}/computer/api/json?pretty=true \
                           -uadmin:{$.jenkins-admin-password} | /usr/sbin/jq '[.computer[].displayName] - ["master"] | .[]' | tr -d '"' |xargs -n1 --no-run-if-empty java -jar /tmp/jenkins-cli.jar -s {$.jenkins-server-url} delete-node
 
-              - provision-linux-slave-vm:
-                  action: provisionVms
+              - setup-jenkins-slave:
+                  action: serviceCall
                   precedingPhases: [clean-slaves-config]
-                  parameters:
-                    hardwareId: "{$.slave-linux-instance-size}"
-                    imageId: "{$.slave-linux-os.image}"
-                    vmIdentity: "{$.slave-linux-os.identity}"
-                    targetQuantity: "{$.slave-linux-quantity}"
-                    roleName: slave-linux
-                  output:
-                    jenkins-slave-linux-hosts: ips
-
-              - install-jenkins-slave:
-                  action: chefsolo
-                  precedingPhases: [provision-linux-slave-vm]
-                  parameters:
-                    recipeUrl: "{$.recipe-url}"
-                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
-                    roles: [ slave-linux ]
-                    jattrs:
-                      jenkins:
-                        server:
-                          url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
-                          pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
-                        node:
-                          agent_type: "{$.slave-linux-agent-type}"
-                          availability: "{$.slave-linux-availability}"
-                        cli:
-                          username: "admin"
-                          password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
-                  output:
-                    slave-attrs: chefState
-
-            return:
-              jenkins-slave-linux-hosts:
-                value: "{$.jenkins-slave-linux-hosts}"
+                  parameters: 
+                    timeout: 600
+                    service: manage-slaves
+                    command: setup-linux-slave
+                    arguments:
+                      agent-type: "{$.agent-type}"
+                      availability: "{$.availability}"
+                      jenkins-server-url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                      jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                      jenkins-server-user: "admin"
+                      jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
 
           plugins-management:
             parameters:
@@ -300,7 +269,6 @@ application:
                   description: Backup contents (jobs, job)
                   #jobs - will restore all jobs
                   #job - restore single job
-
             steps:
               - restore-backup:
                   action: chefsolo
@@ -314,41 +282,25 @@ application:
                         backup_uri: "{$.backup-uri}"
                   output:
                     server-attrs: chefState
-
               - wait-jenkins-server:
                   action: wait
                   precedingPhases: [restore-backup]
                   parameters:
                     delay: 5 minutes
-
-              - provision-slaves-vms:
-                  action: provisionVms
-                  precedingPhases: [restore-backup]
-                  parameters:
-                    roleName: slave-linux
-                    hardwareId: ""
-                    vmIdentity: "{$.slave-linux-os.identity}"
-                    retryCount: 0
-                    staticIps: "{$.jenkins-slave-linux-hosts}"
-
-              - install-jenkins-slave:
-                  action: chefsolo
-                  precedingPhases: [provision-slaves-vms, wait-jenkins-server]
-                  parameters:
-                    recipeUrl: "{$.recipe-url}"
-                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
-                    roles: [ slave-linux ]
-                    jattrs:
-                      jenkins:
-                        server:
-                          url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
-                          pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
-                        node:
-                          agent_type: "{$.slave-linux-agent-type}"
-                          availability: "{$.slave-linux-availability}"
-                        cli:
-                          username: "admin"
-                          password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+              - setup-jenkins-slave:
+                  action: serviceCall
+                  precedingPhases: [wait-jenkins-server]
+                  parameters: 
+                    timeout: 600
+                    service: manage-slaves
+                    command: setup-linux-slave
+                    arguments:
+                      agent-type: "{$.agent-type}"
+                      availability: "{$.availability}"
+                      jenkins-server-url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                      jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                      jenkins-server-user: "admin"
+                      jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
             return:
               jenkins-server-pubkey:
                 value: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
