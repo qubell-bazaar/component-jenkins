@@ -50,7 +50,7 @@ application:
     jenkins-linux-slave:
       type: reference.Submodule
       configuration:
-        __locator.application-id: "jenkins linux slave"
+        __locator.application-id: "CI slave linix node"
       interfaces:
         input:
           slave-linux-os: configuration(object)

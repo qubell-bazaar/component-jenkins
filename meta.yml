@@ -3,7 +3,9 @@ kit:
   link: https://github.com/qubell-bazaar/component-jenkins
   applications:
     - name: "CI Server"
-      manifest: https://raw.github.com/qubell-bazaar/component-jenkins/v0.1.1/component-jenkins.yml
+      manifest: https://raw.github.com/qubell-bazaar/component-jenkins/v0.2.0/component-jenkins.yml
+    - name: "CI slave linix node"
+      manifest: https://raw.github.com/qubell-bazaar/component-jenkins/v0.2.0/component-jenkins-linux-slave.yml
   provider:
     name: "Qubell"
     link: http://qubell.com
