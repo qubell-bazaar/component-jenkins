@@ -5,7 +5,7 @@ jenkins-ci
 
 Installs and configures Jenkins CI Server
 
-[![Install](https://raw.github.com/qubell-bazaar/component-skeleton/master/img/install.png)](https://express.qubell.com/applications/upload?metadataUrl=https://raw.github.com/qubell-bazaar/component-jenkins/v0.3.0/meta.yml)
+[![Install](https://raw.github.com/qubell-bazaar/component-skeleton/master/img/install.png)](https://express.qubell.com/applications/upload?metadataUrl=https://raw.github.com/qubell-bazaar/component-jenkins/master/meta.yml)
 
 Features
 --------
@@ -21,6 +21,7 @@ Configurations
  - Jenkins CI 1.xxx (latest), amazon-linux (us-east-1/ami-1ba18d72), AWS EC2 m1.small, ec2-user
  - Jenkins CI 1.xxx (latest), Ubuntu 12.04 (us-east-1/ami-d0f89fb9), AWS EC2 m1.small, ubuntu
 
+
 Pre-requisites
 --------------
  - Configured Cloud Account a in chosen environment
@@ -33,6 +34,15 @@ Pre-requisites
 Implementation notes
 --------------------
  - Installation is based on Chef recipes from https://github.com/opscode-cookbooks/jenkins/
+
+Configuration parameters
+------------------------
+ - input.server-os: You can select one of OS listed to run jenkins server
+ - agent-type: Allow select slave agent type. For Linux slave nodes you can choose either "jnlp" or "ssh" type. Windows nodes support only "jnlp" agent type. Field type is "string"
+ - input.slave-windows-os: Allow set Windows server AMI and it's credentials. Field type is "object"
+ - input.slave-windows-instance-size: Here you can choose one of the AWS images types to run Windows OS server. Filed type is "string"
+ - input.plugins-info: This field let specify list of plugins to install. Field type is "array"
+ - input.slave-windows-user-password: Here you can specify which password should be set to Administrator user in Windows OS
 
 Example usage
 -------------
