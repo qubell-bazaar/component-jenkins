@@ -1,11 +1,14 @@
-
 application:
   configuration:
     input.server-os: {image: "us-east-1/ami-1ba18d72", identity: ec2-user}
     input.server-instance-size: "m1.small"
     input.slave-linux-os: {image: "us-east-1/ami-1ba18d72", identity: "ec2-user"}
     input.slave-linux-instance-size: "m1.small"
-    input.slave-linux-quantity: "1"
+    input.slave-linux-quantity: "0"
+    input.slave-windows-os: {image: "us-east-1/ami-aede32c6", identity: "Administrator"}
+    input.slave-windows-instance-size: "m1.medium"
+    input.slave-windows-quantity: "0"
+    input.slave-windows-user-password: "123QweAsd"
     input.agent-type: "jnlp"
     input.availability: "always"
     input.recipe-url: "https://s3.amazonaws.com/qubell-starter-kit-artifacts/qubell-bazaar/component-jenkins-cookbooks-stable-bb9d12e.tar.gz"
@@ -21,7 +24,7 @@ application:
     input:
       server-os: "bind(jenkins-server#input.server-os)"
       server-instance-size: "bind(jenkins-server#input.server-instance-size)"
-      recipe-url: "bind(jenkins-server#input.recipe-url, jenkins-linux-slave#input.recipe-url)"
+      recipe-url: "bind(jenkins-server#input.recipe-url, jenkins-linux-slave#input.recipe-url, jenkins-windows-slave#input.recipe-url)"
       jenkins-server-port: "bind(jenkins-server#input.jenkins-server-port)"
       install-method: "bind(jenkins-server#input.install-method)"
       jenkins-version: "bind(jenkins-server#input.jenkins-version)"
@@ -32,6 +35,10 @@ application:
       slave-linux-os: "bind(jenkins-linux-slave#input.slave-linux-os)"
       slave-linux-instance-size: "bind(jenkins-linux-slave#input.slave-linux-instance-size)"
       slave-linux-quantity: "bind(jenkins-linux-slave#input.slave-linux-quantity)"
+      slave-windows-os: "bind(jenkins-windows-slave#input.slave-windows-os)"
+      slave-windows-instance-size: "bind(jenkins-windows-slave#input.slave-windows-instance-size)"
+      slave-windows-quantity: "bind(jenkins-windows-slave#input.slave-windows-quantity)"
+      slave-windows-user-password: "bind(jenkins-windows-slave#input.slave-windows-user-password)"
       agent-type: "bind(jenkins-server#input.agent-type)"
       availability: "bind(jenkins-server#input.availability)"
     manage:
@@ -45,22 +52,263 @@ application:
 
   bindings:
     - [jenkins-server, jenkins-linux-slave]
+    - [jenkins-server, jenkins-windows-slave]
 
   components:
     jenkins-linux-slave:
-      type: reference.Submodule
-      configuration:
-        __locator.application-id: "CI slave linix node"
+      type: workflow.Instance
       interfaces:
         input:
           slave-linux-os: configuration(object)
           slave-linux-instance-size: configuration(string)
           slave-linux-quantity: configuration(string)
           recipe-url: configuration(string)
-        manage:
+        actions:
           setup-linux-slave: receive-command(string agent-type, string availability, string jenkins-server-url, string jenkins-server-user, string jenkins-server-password, string jenkins-server-pubkey)
-        output:
+        result:
           jenkins-linux-slaves: publish-signal(object)
+
+      configuration:
+        configuration.triggers:
+          input.slave-linux-quantity: update
+        configuration.propagateStatus: [ update, setup-linux-slave ]
+        configuration.workflows:
+          update: &update
+            parameters:
+              - slave-linux-os:
+                  description: Jenkins slave OS parameters
+              - slave-linux-instance-size:
+                  description: Slave instance size
+              - slave-linux-quantity:
+                  description: Quantity of slave nodes to run
+            steps:
+              - provision-vm:
+                  action: provisionVms
+                  parameters:
+                    hardwareId: "{$.slave-linux-instance-size}"
+                    imageId: "{$.slave-linux-os.image}"
+                    vmIdentity: "{$.slave-linux-os.identity}"
+                    targetQuantity: "{$.slave-linux-quantity}"
+                    roleName: default
+                  output:
+                    jenkins-linux-slave-hosts: ips
+
+              - get-hostname:
+                  action: execrun
+                  precedingPhases: [ provision-vm ]
+                  parameters:
+                    roles: [ default ]
+                    isSudo: true
+                    command:
+                      - curl -s http://169.254.169.254/latest/meta-data/local-hostname
+                  output:
+                    jenkins-linux-slave-pdns: stdout
+
+            return:
+              jenkins-linux-slaves:
+                value:
+                  hosts: "{$.jenkins-linux-slave-hosts}"
+                  pdns: "{$.jenkins-linux-slave-pdns}"
+          launch: *update
+          setup-linux-slave:
+            parameters:
+              - agent-type:
+                  default: jnlp
+                  description: Jenkins slave node agent type (jnlp, ssh)
+              - availability:
+                  default: always
+                  description: Jenkins slave node availability (demand, always)
+              - jenkins-server-url:
+                  description: Jenkins server URL
+              - jenkins-server-user:
+                  description: Jenkins server admin user
+              - jenkins-server-password:
+                  description: Jenkins server admin password
+              - jenkins-server-pubkey:
+                  description: Jenkins server ssh public key
+
+            steps:
+              - install-jenkins-slave:
+                  action: chefsolo
+                  parameters:
+                    recipeUrl: "{$.recipe-url}"
+                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
+                    roles: [ default ]
+                    jattrs:
+                      jenkins:
+                        server:
+                          url: "{$.jenkins-server-url}"
+                          pubkey: "{$.jenkins-server-pubkey}"
+                        node:
+                          agent_type: "{$.agent-type}"
+                          availability: "{$.availability}"
+                        cli:
+                          username: "{$.jenkins-server-user}"
+                          password: "{$.jenkins-server-password}"
+
+    jenkins-windows-slave:
+      type: workflow.Instance
+      interfaces:
+        input:
+          slave-windows-os: configuration(object)
+          slave-windows-instance-size: configuration(string)
+          slave-windows-user-password: configuration(string)
+          slave-windows-quantity: configuration(string)
+          recipe-url: configuration(string)
+        actions:
+          setup-windows-slave: receive-command(string agent-type, string availability, string jenkins-server-url, string jenkins-server-user, string jenkins-server-password, string jenkins-server-pubkey)
+        result:
+          jenkins-windows-slaves: publish-signal(object)
+          jenkins-windows-slaves-password: publish-signal(string)
+      configuration:
+        configuration.triggers:
+          input.slave-windows-quantity: update
+        configuration.propagateStatus: [ update, setup-windows-slave ]
+        configuration.workflows:
+          update: &update
+            steps:
+              - provision-slave-windows-vm:
+                  action: provisionVms
+                  parameters:
+                    hardwareId: "{$.slave-windows-instance-size}"
+                    imageId: "{$.slave-windows-os.image}"
+                    targetQuantity: "{$.slave-windows-quantity}"
+                    vmIdentity: "{$.slave-windows-os.identity}"
+                    roleName: default
+                    providerSettings:
+                      userData: 
+                        |
+                          <powershell>
+                            #Install-WindowsFeature Net-Framework-Core
+                            net user Administrator {$.slave-windows-user-password}
+                            If (Test-Path "C:\cygwin64\bin\bash.exe") {{
+                              # cygwin installed, do nothing
+                            }} Else {{
+                              (New-Object System.Net.WebClient).DownloadFile("http://cygwin.com/setup-x86_64.exe", "setup-x86_64.exe")
+                              .\setup-x86_64.exe --no-desktop --site ftp://mirrors.kernel.org/sourceware/cygwin/ --quiet-mode --local-package-dir C:\cygwin64\local_packages --packages "openssh,curl,util-linux,procps,sed" | Out-Null
+                              C:\cygwin64\bin\bash.exe --login -c "cp /usr/bin/ps.exe /usr/bin/ps.exe~; cp /bin/ps.exe /bin/ps.exe~; cp /usr/bin/procps.exe /usr/bin/ps.exe; cp /usr/bin/procps.exe /bin/ps.exe"
+                              C:\cygwin64\bin\bash.exe --login -c "ssh-host-config --yes --user cyg_server --pwd twEntys1x"
+                              netsh advfirewall firewall add rule name="CYGWIN sshd" dir=in action=allow program="C:\cygwin64\usr\sbin\sshd.exe" enable=yes
+                              net start sshd
+                            }}
+                            C:\cygwin64\bin\bash.exe --login -c "mkdir ~/.ssh; curl 169.254.169.254/latest/meta-data/public-keys/0/openssh-key > ~/.ssh/authorized_keys"
+                            If (Test-Path "C:/opscode/chef/bin/chef-solo") {{
+                              # chef installed, do nothing
+                            }} Else {{
+                              cd C:\
+                              C:\cygwin64\bin\curl.exe -O https://opscode-omnibus-packages.s3.amazonaws.com/windows/2008r2/x86_64/chef-windows-10.32.2-3.windows.msi
+                              Start-Process -FilePath msiexec -ArgumentList /i, "C:\chef-windows-10.32.2-3.windows.msi", /quiet, /qn -Wait
+                              C:\cygwin64\bin\bash.exe --login -c "cd /cygdrive/c/opscode/chef/embedded/lib/ruby/gems/1.9.1/gems/chef-10.32.2-x86-mingw32/lib/chef/application/; cp solo.rb solo.rb~; cat solo.rb~ | sed -re 's|tar zxvfC|C:/opscode/chef/bin/tar zxvfC|' > solo.rb"
+                            }}
+                            C:\cygwin64\bin\bash.exe --login -c "mkdir ~/bin"
+                            C:\cygwin64\bin\bash.exe --login -c "cat > ~/bin/shef <<'EEND'
+                          #!/usr/bin/bash --login
+                          /cygdrive/c/opscode/chef/embedded/bin/ruby.exe C:/opscode/chef/bin/shef `$$*
+                          EEND
+                          chmod +x ~/bin/shef
+                          "
+                            C:\cygwin64\bin\bash.exe --login -c "cat > ~/bin/chef-client <<'EEND'
+                          #!/usr/bin/bash --login
+                          /cygdrive/c/opscode/chef/embedded/bin/ruby.exe C:/opscode/chef/bin/chef-client `$$*
+                          EEND
+                          chmod +x ~/bin/chef-client
+                          "
+                            C:\cygwin64\bin\bash.exe --login -c "cat > ~/bin/chef-solo <<'EEND'
+                          #!/usr/bin/bash --login
+                          CONFIG_PATH=
+                          OTHER_ARGS=
+                          while [ \`"x`$$1\`" != x ]; do
+                            if [ \`"`$$1\`" == -c ]; then
+                              shift;
+                              CONFIG_PATH=\`"`$$1\`"
+                              shift;
+                            else
+                              OTHER_ARGS=\`"`$$OTHER_ARGS `$$1\`"
+                              shift;
+                            fi
+                          done
+                          ROOT_FIX=`$$(cygpath -m `$$HOME)
+                          FILE_CACHE=`$$(grep file_cache_path `$$CONFIG_PATH | awk '{{print `$$2}}' | sed -re 's/\x22(.*)\x22/\1/')
+                          COOKBOOKS=`$$(grep cookbook_path `$$CONFIG_PATH | awk '{{print `$$2}}' | sed -re 's/.*\x22(.*)\x22.*/\1/')
+                          QUBELL_COOKBOOKS=`$$(grep cookbook_path `$$CONFIG_PATH | awk '{{print `$$3}}' | sed -re 's/.*\x22(.*)\x22.*/\1/')
+                          ROLES=`$$(grep role_path `$$CONFIG_PATH | awk '{{print `$$2}}' | sed -re 's/.*\x22(.*)\x22.*/\1/')
+                          DATA_BAGS=`$$(grep data_bag_path `$$CONFIG_PATH | awk '{{print `$$2}}' | sed -re 's/.*\x22(.*)\x22.*/\1/')
+                          NODE_PATH=`$$(grep node_path `$$CONFIG_PATH | awk '{{print `$$2}}' | sed -re 's/.*\x22(.*)\x22.*/\1/')
+                          NODE_NAME=`$$(grep node_name `$$CONFIG_PATH | awk '{{print `$$2}}' | sed -re 's/.*\x22(.*)\x22.*/\1/')
+                          NEW_ROOT=`$$(mktemp -d)
+                          cp -r `$$ROOT_FIX/`$$FILE_CACHE/* `$$NEW_ROOT/
+                          cp -r `$$ROOT_FIX/`$$COOKBOOKS `$$NEW_ROOT/cookbooks
+                          cp -r `$$ROOT_FIX/`$$QUBELL_COOKBOOKS `$$NEW_ROOT/qubell_cookbooks
+                          cp -r `$$ROOT_FIX/`$$DATA_BAGS `$$NEW_ROOT/data_bags
+                          cp -r `$$ROOT_FIX/`$$ROLES `$$NEW_ROOT/roles
+                          cd ~
+                          NODE_PATH_FIX=`$$(echo `$$NODE_PATH | cut -c 2-)
+                          mkdir -p `$$NODE_PATH_FIX
+                          chmod 0755 `$$NODE_PATH_FIX
+                          chmod 0755 `$$NODE_PATH_FIX/`$$NODE_NAME.json
+                          chmod 0755 `$$ROOT_FIX/`$$NODE_PATH_FIX
+                          chmod 0755 `$$ROOT_FIX/`$$NODE_PATH_FIX/`$$NODE_NAME.json
+                          cat `$$CONFIG_PATH | sed -re \`"s|`$$COOKBOOKS|`$$(cygpath -m `$$NEW_ROOT/cookbooks)|;s|`$$QUBELL_COOKBOOKS|`$$(cygpath -m `$$NEW_ROOT/qubell_cookbooks)|;s|`$$DATA_BAGS|`$$(cygpath -m `$$NEW_ROOT/data_bags)|;s|`$$ROLES|`$$(cygpath -m `$$NEW_ROOT/roles)|;s|`$$NODE_PATH|`$$ROOT_FIX/`$$NODE_PATH_FIX|;s|\x22`$$FILE_CACHE\x22|\x22`$$(cygpath -m `$$NEW_ROOT)\x22|;\`" > `$$NEW_ROOT/client.rb
+                          /cygdrive/c/opscode/chef/embedded/bin/ruby.exe C:/opscode/chef/bin/chef-solo -c `$$(cygpath -m `$$NEW_ROOT/client.rb) `$$OTHER_ARGS
+                          EEND
+                          chmod +x ~/bin/chef-solo
+                          "
+                            C:\cygwin64\bin\bash.exe --login -c "cat > ~/.bashrc <<'EEND'
+                          export LC_ALL=C
+                          export LANG=C
+                          export PATH=~/bin:`$$PATH
+                          EEND
+                          "
+                          </powershell>
+                  output:
+                    jenkins-windows-slave-hosts: ips
+              - wait-provision:
+                  action: wait
+                  precedingPhases: [provision-slave-windows-vm]
+                  parameters:
+                    delay: 20 minutes
+              - get-hostname:
+                  action: execrun
+                  precedingPhases: [wait-provision]
+                  parameters:
+                    roles: [default]
+                    command:
+                     - curl -s http://169.254.169.254/latest/meta-data/local-hostname
+                  output:
+                    jenkins-windows-slave-pdns: stdout
+              
+            return:
+              jenkins-windows-slaves:
+                value:
+                  hosts: "{$.jenkins-windows-slave-hosts}"
+                  pdns: "{$.jenkins-windows-slave-pdns}"
+              jenkins-windows-slaves-password:
+                value: "{$.slave-windows-user-password}"
+
+          launch: *update
+          setup-windows-slave:
+            steps:
+              - install-jenkins-slave:
+                  action: chefsolo
+                  parameters:
+                    isSudo: false
+                    recipeUrl: "{$.recipe-url}"
+                    runList: [ "recipe[cookbook_qubell_jenkins::node]" ]
+                    roles: [default]
+                    jattrs:
+                      jenkins:
+                        server:
+                          url: "{$.jenkins-server-url}"
+                        node:
+                          agent_type: "windows"
+                          availability: "{$.availability}"
+                        cli:
+                          username: "{$.jenkins-server-user}"
+                          password: "{$.jenkins-server-password}"
+                      java:
+                        java_home: 'C:\Program Files\Java'
+                        windows:
+                          url: "https://s3.amazonaws.com/ab-comp/jdk-7u60-windows-x64.exe"
 
     jenkins-server:
       type: workflow.Instance
@@ -85,8 +333,12 @@ application:
           availability: configuration(string)
         linux-slaves:
           jenkins-linux-slaves: consume-signal(object)
-        manage-slaves:
+        windows-slaves:
+          jenkins-windows-slaves: consume-signal(object)
+        manage-linux-slaves:
           setup-linux-slave: send-command(string agent-type, string availability, string jenkins-server-url, string jenkins-server-user, string jenkins-server-password, string jenkins-server-pubkey)
+        manage-windows-slaves:
+          setup-windows-slave: send-command(string agent-type, string availability, string jenkins-server-url, string jenkins-server-user, string jenkins-server-password, string jenkins-server-pubkey)
         actions:
           plugins-management: receive-command(object plugins-info, string plugins-action)
           restore-backup: receive-command(string backup-uri, string restore-type)
@@ -96,14 +348,14 @@ application:
           jenkins-admin-password: publish-signal(string)
           jenkins-server-pubkey: publish-signal(string)
 
-      required: [linux-slaves, manage-slaves]
-
+      required: [linux-slaves, manage-linux-slaves, windows-slaves, manage-windows-slaves]
       configuration:
         configuration.triggers:
           input.plugins-info: plugins-management
           input.backup-uri: restore-backup
-          linux-slaves.jenkins-linux-slaves: scale-linux-slaves
-        configuration.propagateStatus: [plugins-management,restore-backup,scale-linux-slaves]
+          linux-slaves.jenkins-linux-slaves: scale-slaves
+          windows-slaves.jenkins-windows-slaves: scale-slaves
+        configuration.propagateStatus: [plugins-management,restore-backup,scale-slaves]
         configuration.workflows:
           launch:
             parameters:
@@ -172,13 +424,28 @@ application:
                   output:
                     server-attrs: chefState
 
-              - setup-jenkins-slave:
+              - setup-linux-slave:
                   action: serviceCall
                   precedingPhases: [setup-jenkins-server]
                   parameters: 
                     timeout: 600
-                    service: manage-slaves
+                    service: manage-linux-slaves
                     command: setup-linux-slave
+                    arguments:
+                      agent-type: "{$.agent-type}"
+                      availability: "{$.availability}"
+                      jenkins-server-url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                      jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                      jenkins-server-user: "admin"
+                      jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+
+              - setup-windows-slave:
+                  action: serviceCall
+                  precedingPhases: [setup-jenkins-server]
+                  parameters: 
+                    timeout: 600
+                    service: manage-windows-slaves
+                    command: setup-windows-slave
                     arguments:
                       agent-type: "{$.agent-type}"
                       availability: "{$.availability}"
@@ -196,20 +463,19 @@ application:
               jenkins-server-pubkey:
                 value: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
 
-          scale-linux-slaves:
+          scale-slaves:
             parameters:
-              - slave-linux-os:
-                  description: Slave OS parameters 
-              - slave-linux-instance-size:
-                  description: Slave instance size
               - agent-type:
                   default: jnlp
                   description: Jenkins slave node agent type (jnlp, ssh)
               - availability:
                   default: always
                   description: Jenkins slave node availability (demand, always)
+              
               - slave-linux-quantity:
-                  description: Quantity of additional linux slaves to run
+                  description: Target Quantity of linux slaves
+              - slave-windows-quantity:
+                  description: Target Quantity of windows slaves
 
             steps:
               - clean-slaves-config:
@@ -226,13 +492,28 @@ application:
                           curl -s {$.jenkins-server-url}/computer/api/json?pretty=true \
                           -uadmin:{$.jenkins-admin-password} | /usr/sbin/jq '[.computer[].displayName] - ["master"] | .[]' | tr -d '"' |xargs -n1 --no-run-if-empty java -jar /tmp/jenkins-cli.jar -s {$.jenkins-server-url} delete-node
 
-              - setup-jenkins-slave:
+              - setup-linux-slaves:
                   action: serviceCall
                   precedingPhases: [clean-slaves-config]
                   parameters: 
                     timeout: 600
-                    service: manage-slaves
+                    service: manage-linux-slaves
                     command: setup-linux-slave
+                    arguments:
+                      agent-type: "{$.agent-type}"
+                      availability: "{$.availability}"
+                      jenkins-server-url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                      jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                      jenkins-server-user: "admin"
+                      jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+
+              - setup-windows-slaves:
+                  action: serviceCall
+                  precedingPhases: [clean-slaves-config]
+                  parameters: 
+                    timeout: 600
+                    service: manage-windows-slaves
+                    command: setup-windows-slave
                     arguments:
                       agent-type: "{$.agent-type}"
                       availability: "{$.availability}"
@@ -287,12 +568,12 @@ application:
                   precedingPhases: [restore-backup]
                   parameters:
                     delay: 5 minutes
-              - setup-jenkins-slave:
+              - setup-linux-slave:
                   action: serviceCall
                   precedingPhases: [wait-jenkins-server]
                   parameters: 
                     timeout: 600
-                    service: manage-slaves
+                    service: manage-linux-slaves
                     command: setup-linux-slave
                     arguments:
                       agent-type: "{$.agent-type}"
@@ -301,7 +582,21 @@ application:
                       jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
                       jenkins-server-user: "admin"
                       jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+              - setup-windows-slave:
+                  action: serviceCall
+                  precedingPhases: [wait-jenkins-server]
+                  parameters: 
+                    timeout: 600
+                    service: manage-windows-slaves
+                    command: setup-windows-slave
+                    arguments:
+                      agent-type: "{$.agent-type}"
+                      availability: "{$.availability}"
+                      jenkins-server-url: "http://{$.jenkins-server-hosts[0]}:{$.jenkins-server-port}"
+                      jenkins-server-pubkey: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
+                      jenkins-server-user: "admin"
+                      jenkins-server-password: "{$.server-attrs['*'].jenkins.server.admin_password[0]}"
+            
             return:
               jenkins-server-pubkey:
                 value: "{$.server-attrs['*'].jenkins.server.pubkey[0]}"
-
