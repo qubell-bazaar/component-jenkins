@@ -56,7 +56,8 @@ class JenkinsDevUbuntuComponentTestCase(BaseComponentTestCase):
         "name": name,
         "file": os.path.realpath(os.path.join(os.path.dirname(__file__), '../%s.yml' % name)),
         "parameters": {
-          "input.jenkins-version": "1.572"
+          "input.jenkins-version": "1.572",
+          "input.install-method": "war"
         }
     }]
     @classmethod
