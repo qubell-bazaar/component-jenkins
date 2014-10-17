@@ -5,7 +5,9 @@ jenkins-ci
 
 Installs and configures Jenkins CI Server
 
-[![Install](https://raw.github.com/qubell-bazaar/component-skeleton/master/img/install.png)](https://express.qubell.com/applications/upload?metadataUrl=https://raw.github.com/qubell-bazaar/component-jenkins/master/meta.yml)
+Version v0.4.0
+
+[![Install](https://raw.github.com/qubell-bazaar/component-skeleton/master/img/install.png)](https://express.qubell.com/applications/upload?metadataUrl=https://raw.github.com/qubell-bazaar/component-jenkins/v0.4.0/meta.yml)
 
 Features
 --------
