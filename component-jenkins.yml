@@ -63,8 +63,8 @@ application:
             type: configuration(map<string,object>)
             suggestions:
               amazon-linux: {image: "us-east-1/ami-1ba18d72", identity: ec2-user}
-              centos-6.4: {image: "us-east-1/ami-ee698586", identity: root}
-              ubuntu-12.04: {image: "us-east-1/ami-d0f89fb9", identity: ubuntu}
+              centos-64: {image: "us-east-1/ami-ee698586", identity: root}
+              ubuntu-1204: {image: "us-east-1/ami-d0f89fb9", identity: ubuntu}
           server-instance-size: configuration(string)
           recipe-url: configuration(string)
           jenkins-server-port: configuration(int)
