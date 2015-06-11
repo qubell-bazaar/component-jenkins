@@ -221,6 +221,8 @@ application:
 
     linux-nodes:
       type: composite.Scaler
+      configuration:
+        configuration.minQuantity: 0
       components:
         jenkins-linux-slave:
           type: workflow.Instance
@@ -246,17 +248,6 @@ application:
             configuration.propagateStatus: [update]
             configuration.workflows:
               launch: &update-node
-                parameters:
-                  - slave-linux-os:
-                      description: Jenkins slave OS parameters
-                  - slave-linux-instance-size:
-                      description: Slave instance size
-                  - agent-type:
-                      default: jnlp
-                      description: Jenkins slave node agent type (jnlp, ssh)
-                  - availability:
-                      default: always
-                      description: Jenkins slave node availability (demand, always)
                 steps:
                   - get-env-props:
                       action: getEnvironmentProperties
@@ -331,6 +322,8 @@ application:
                               name: "{$.jenkins-linux-slaves.pdns['*'][0]}"
     windows-nodes:
       type: composite.Scaler
+      configuration:
+        configuration.minQuantity: 0
       components:
         jenkins-windows-slave:
           type: workflow.Instance
