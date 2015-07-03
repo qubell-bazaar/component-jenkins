@@ -1,7 +1,7 @@
 jenkins-ci
 ==========
 
-![](http://jenkins-ci.org/sites/default/files/jenkins_logo.png)
+![](://s3.amazonaws.com/qubell-images/jenkins-logo.png)
 
 Installs and configures Jenkins CI Server
 
@@ -13,7 +13,7 @@ Features
 --------
 
  - Install and configure Jenkins CI Server on multiple compute
- - Setup Jenkins slave nodes
+ - Setup Jenkins slave nodes both Windows and Linux
  - Install Jenkins plugins
  - Restore from previosly created backups
 
@@ -39,12 +39,24 @@ Implementation notes
 
 Configuration parameters
 ------------------------
- - input.server-os: You can select one of OS listed to run jenkins server
- - agent-type: Allow select slave agent type. For Linux slave nodes you can choose either "jnlp" or "ssh" type. Windows nodes support only "jnlp" agent type. Field type is "string"
- - input.slave-windows-os: Allow set Windows server AMI and it's credentials. Field type is "object"
- - input.slave-windows-instance-size: Here you can choose one of the AWS images types to run Windows OS server. Filed type is "string"
- - input.plugins-info: This field let specify list of plugins to install. Field type is "array"
- - input.slave-windows-user-password: Here you can specify which password should be set to Administrator user in Windows OS
+ - Server compatible AMI: You can select one of OS listed to run jenkins server.
+ - Jenkins port: Select jenkins server listening port Default is 8080
+ - Server compatible hardware: Select AWS instance type. Default is m1.small.
+ - Jenkins server version: You can select specific version of Jenkins server to be installed.
+   Note! Installation will be made from CentOS/Debian repo, so you have to set version like '1.612-1.1' instead of '1.612'.
+ - URI to Jenkins backup: URL to jenkins backup to be restored
+ - Jenkins backups restore type: You have to provide restoration type - 
+   Single job - content of job folder should be packed to archive, archive name should be same as job name. 
+   All jobs - directory 'jobs' should be packed to archive.
+   Full Jenkins backup - content of Jenkins home folder shoud be packed to archive.
+ - Linux slave compatible AMI: Allow set Linux jenkins slave AMI.
+ - Windows slave compatible AMI: Allow set Windows jenkins slave AMI.
+ - Windows administrator password: Password to 'Administrator' user in Windows OS
+ - Windows slave compatible hardware: Here you can choose one of the AWS images types to run Windows OS server. Filed type is "string"
+ - Plugins info: This field let specify list of plugins to install. 
+   If specified like ["plugin_name1","plugin_name2"]. In this case default action always "install". Plugin's latest version will be installed from the Jenkins plugins repo.
+   For more custom management plugins info can be specified in following format: [{"name":"plugin_name", "version":"version_number", "url":"Plugin's_URL", "action":"(install|delete)"}{another plugin}].
+   All parameters are optional except name.
 
 Example usage
 -------------
