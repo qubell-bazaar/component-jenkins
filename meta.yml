@@ -3,7 +3,7 @@ kit:
   link: https://github.com/qubell-bazaar/component-jenkins
   applications:
     - name: "CI Server"
-      manifest: https://raw.github.com/qubell-bazaar/component-jenkins/1.0-35p/component-jenkins.yml
+      manifest: https://raw.github.com/qubell-bazaar/component-jenkins/1.1-41p/component-jenkins.yml
   provider:
     name: "Qubell"
     link: http://qubell.com
